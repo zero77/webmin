@@ -15,7 +15,6 @@ Example code:
 ##use warnings;
 use Socket;
 use POSIX;
-use Encode;
 eval "use Socket6";
 $ipv6_module_error = $@;
 our $error_handler_funcs = [ ];
@@ -158,14 +157,15 @@ if ($_[3] || $gconfig{'sortconfigs'}) {
 	    }
 	}
 else {
+	my %done;
 	foreach $k (@order) {
-		if (exists($_[1]->{$k})) {
+		if (exists($_[1]->{$k}) && !$done{$k}++) {
 			(print ARFILE $k,$join,$_[1]->{$k},"\n") ||
 				&error(&text("efilewrite", $realfile, $!));
 			}
 		}
 	foreach $k (keys %{$_[1]}) {
-		if (!exists($old{$k})) {
+		if (!exists($old{$k}) && !$done{$k}++) {
 			(print ARFILE $k,$join,$_[1]->{$k},"\n") ||
 				&error(&text("efilewrite", $realfile, $!));
 			}
@@ -1491,12 +1491,13 @@ sub error
 $main::no_miniserv_userdb = 1;
 my $msg = join("", @_);
 $msg =~ s/<[^>]*>//g;
+my $error_details = (($ENV{'WEBMIN_DEBUG'} || $gconfig{'debug_enabled'}) ? "" : "\n");
 if (!$main::error_must_die) {
 	print STDERR "Error: ",$msg,"\n";
 	}
 &load_theme_library();
 if ($main::error_must_die) {
-	die @_;
+	die "@_$error_details";
 	}
 &call_error_handlers();
 if (!$ENV{'REQUEST_METHOD'}) {
@@ -3845,7 +3846,7 @@ if (!$main::get_system_hostname[$m]) {
 					last;
 					}
 				}
-			$fromfile .= ".".$dname;
+			$fromfile .= ".".$dname if ($dname);
 			}
 
 		# If we found a hostname in a file, use it
@@ -5064,6 +5065,29 @@ if ($main::export_to_caller) {
 return 1;
 }
 
+=head2 load_language_auto()
+
+Returns 1 or 0, if *.auto files should be used based on options (user
+or lang_list.txt)
+
+=cut
+sub load_language_auto
+{
+my $auto = $gconfig{"langauto_$remote_user"};
+if (!defined($auto)) {
+	my $glangauto = $gconfig{'langauto'};
+	if (defined($glangauto)) {
+		$auto = $glangauto;
+		} 
+	else {
+		my ($clanginfo) = grep { $_->{'lang'} eq $current_lang }
+			&list_languages();
+		$auto = $clanginfo->{'auto'} if ($clanginfo);
+		}
+	}
+return $auto;
+}
+
 =head2 load_language([module], [directory])
 
 Returns a hashtable mapping text codes to strings in the appropriate language,
@@ -5083,27 +5107,22 @@ sub load_language
 my %text;
 my $root = $root_directory;
 my $ol = $gconfig{'overlang'};
-my $auto = $gconfig{"langauto_$remote_user"};
-if (!defined($auto)) {
-	my $glangauto = $gconfig{'langauto'};
-	if (defined($glangauto)) {
-		$auto = $glangauto;
-	} else {
-		my ($clanginfo) = grep { $_->{'lang'} eq $current_lang } &list_languages();
-		$auto = $clanginfo->{'auto'};
-	}
-}
+my $auto = load_language_auto();
 my ($dir) = ($_[1] || "lang");
 
 # Read global lang files
 foreach my $o (@lang_order_list) {
 	my $ok = &read_file_cached_with_stat("$root/$dir/$o", \%text);
-	&read_file_cached_with_stat("$root/$dir/$o.auto", \%text) if($auto && $ok && -r "$root/$dir/$o.auto");
-	return () if (!$ok && $o eq $default_lang);
+	my $ok_auto;
+	$ok_auto = &read_file_cached_with_stat("$root/$dir/$o.auto", \%text) 
+		if ($auto && -r "$root/$dir/$o.auto");
+	return () if (!$ok && !$ok_auto && $o eq $default_lang);
 	}
 if ($ol) {
 	foreach my $o (@lang_order_list) {
 		&read_file_cached("$root/$ol/$o", \%text);
+		&read_file_cached("$root/$ol/$o.auto", \%text) 
+			if ($auto && -r "$root/$ol/$o.auto");
 		}
 	}
 &read_file_cached("$config_directory/custom-lang", \%text);
@@ -5119,11 +5138,14 @@ if ($_[0]) {
 	my $mdir = &module_root_directory($_[0]);
 	foreach my $o (@lang_order_list) {
 		&read_file_cached_with_stat("$mdir/$dir/$o", \%text);
-		&read_file_cached_with_stat("$mdir/$dir/$o.auto", \%text) if($auto && -r "$mdir/$dir/$o.auto");
+		&read_file_cached_with_stat("$mdir/$dir/$o.auto", \%text)
+			if($auto && -r "$mdir/$dir/$o.auto");
 		}
 	if ($ol) {
 		foreach my $o (@lang_order_list) {
 			&read_file_cached("$mdir/$ol/$o", \%text);
+			&read_file_cached("$mdir/$ol/$o.auto", \%text)
+				if ($auto && -r "$mdir/$ol/$o.auto");
 			}
 		}
 	&read_file_cached("$config_directory/$_[0]/custom-lang", \%text);
@@ -5299,6 +5321,7 @@ sub get_module_info
 return () if ($_[0] =~ /^\./);
 my (%rv, $clone, $o);
 my $mdir = &module_root_directory($_[0]);
+my $auto = load_language_auto();
 &read_file_cached("$mdir/module.info", \%rv) || return ();
 if (-l $mdir) {
 	# A clone is a module that links to another directory under the root
@@ -5315,6 +5338,8 @@ if (-l $mdir) {
 foreach $o (@lang_order_list) {
 	next if ($o eq "en");
 	&read_file_cached("$mdir/module.info.$o", \%rv);
+	&read_file_cached("$mdir/module.info.$o.auto", \%rv)
+		if ($auto && -r "$mdir/module.info.$o.auto");
 	}
 
 # Apply desc_$LANG overrides
@@ -5579,6 +5604,7 @@ $code =~ s/\.\S+//g;
 my %language_map = (
 
     # Use new type of language codes
+    'en_GB' => 'en',
     'ja_JP' => 'ja',
     'ko_KR' => 'ko',
     'en_gb' => 'en',
@@ -7444,8 +7470,13 @@ sub help_file
 {
 my $mdir = &module_root_directory($_[0]);
 my $dir = "$mdir/help";
+my $auto = load_language_auto();
 foreach my $o (@lang_order_list) {
 	my $lang = "$dir/$_[1].$o.html";
+	my $lang_auto = "$dir/$_[1].$o.auto.html";
+	if ($auto && !-r $lang && -r $lang_auto) {
+		return $lang_auto;
+		}
 	return $lang if (-r $lang);
 	}
 return "$dir/$_[1].html";
@@ -8643,14 +8674,12 @@ return defined($gconfig{'userconfig'}) ? 'usermin' : 'webmin';
 =head2 get_charset
 
 Returns the character set for the current language, such as iso-8859-1.
+Nowadays should always return 'UTF-8' encoding only
 
 =cut
 sub get_charset
 {
-my $charset = defined($gconfig{'charset'}) ? $gconfig{'charset'} :
-		 $current_lang_info->{'charset'} ?
-		 $current_lang_info->{'charset'} : $default_charset;
-return $charset;
+return 'UTF-8';
 }
 
 =head2 get_display_hostname
@@ -9339,13 +9368,21 @@ sub END
 {
 $main::end_exit_status ||= $?;
 if ($$ == $main::initial_process_id) {
-	# Exiting from initial process
+	# Exiting from initial process ... cleanup all transient files
 	&cleanup_tempnames();
+
 	if ($gconfig{'debug_what_start'} && $main::debug_log_start_time) {
+		# Log the completion of this script to the debug log
 		my $len = time() - $main::debug_log_start_time;
 		&webmin_debug_log("STOP", "runtime=$len");
 		$main::debug_log_start_time = 0;
 		}
+
+	# Drop any LDAP or MySQL connections
+	while(my ($str, $conn) = each %main::connect_userdb_cache) {
+		&disconnect_userdb($str, $conn->[0], 1);
+		}
+
 	if (!$ENV{'SCRIPT_NAME'}) {
 		# In a command-line script - call the real exit, so that the
 		# exit status gets properly propogated. In some cases this
@@ -10489,6 +10526,12 @@ protocol type too.
 sub connect_userdb
 {
 my ($str) = @_;
+my @rv;
+if ($main::connect_userdb_cache{$str}) {
+	@rv = @{$main::connect_userdb_cache{$str}};
+	$main::connect_userdb_cache_time{$str} = time();
+	return wantarray ? @rv : $rv[0];
+	}
 my ($proto, $user, $pass, $host, $prefix, $args) = &split_userdb_string($str);
 if ($proto eq "mysql") {
 	# Connect to MySQL with DBI
@@ -10499,7 +10542,7 @@ if ($proto eq "mysql") {
 	$cstr .= ";port=$port" if ($port);
 	my $dbh = $drh->connect($cstr, $user, $pass, { });
 	$dbh || return &text('sql_emysqlconnect', $drh->errstr);
-	return wantarray ? ($dbh, $proto, $prefix, $args) : $dbh;
+	@rv = ($dbh, $proto, $prefix, $args);
 	}
 elsif ($proto eq "postgresql") {
 	# Connect to PostgreSQL with DBI
@@ -10510,7 +10553,7 @@ elsif ($proto eq "postgresql") {
 	$cstr .= ";port=$port" if ($port);
 	my $dbh = $drh->connect($cstr, $user, $pass);
 	$dbh || return &text('sql_epostgresqlconnect', $drh->errstr);
-	return wantarray ? ($dbh, $proto, $prefix, $args) : $dbh;
+	@rv = ($dbh, $proto, $prefix, $args);
 	}
 elsif ($proto eq "ldap") {
 	# Connect with perl LDAP module
@@ -10551,32 +10594,41 @@ elsif ($proto eq "ldap") {
 		return &text('sql_eldaplogin', $user,
 			     $mesg ? $mesg->error : "Unknown error");
 		}
-	return wantarray ? ($ldap, $proto, $prefix, $args) : $ldap;
+	@rv = ($ldap, $proto, $prefix, $args);
 	}
 else {
 	return "Unknown protocol $proto";
 	}
+$main::connect_userdb_cache{$str} = \@rv;
+$main::connect_userdb_cache_time{$str} = time();
+return wantarray ? @rv : $rv[0];
 }
 
-=head2 disconnect_userdb(string, &handle)
+=head2 disconnect_userdb(string, &handle, [force-disconnect])
 
 Closes a handle opened by connect_userdb
 
 =cut
 sub disconnect_userdb
 {
-my ($str, $h) = @_;
-if ($str =~ /^(mysql|postgresql):/) {
-	# DBI disconnnect
-	if (!$h->{'AutoCommit'}) {
-		$h->commit();
+my ($str, $h, $force) = @_;
+if ($force ||
+    !$main::connect_userdb_cache{$str} ||
+    time() - $main::connect_userdb_cache_time{$str} > 60) {
+	if ($str =~ /^(mysql|postgresql):/) {
+		# DBI disconnnect
+		if (!$h->{'AutoCommit'}) {
+			$h->commit();
+			}
+		$h->disconnect();
 		}
-	$h->disconnect();
-	}
-elsif ($str =~ /^ldap:/) {
-	# LDAP disconnect
-	$h->unbind();
-	$h->disconnect();
+	elsif ($str =~ /^ldap:/) {
+		# LDAP disconnect
+		$h->unbind();
+		$h->disconnect();
+		}
+	delete($main::connect_userdb_cache{$str});
+	delete($main::connect_userdb_cache_time{$str});
 	}
 }
 
@@ -10871,8 +10923,8 @@ Compares to version "number" strings, and returns -1 if ver1 is older than ver2,
 sub compare_version_numbers
 {
 my ($ver1, $ver2) = @_;
-my @sp1 = split(/[\.\-\+\~]/, $ver1);
-my @sp2 = split(/[\.\-\+\~]/, $ver2);
+my @sp1 = split(/[\.\-\+\~\_]/, $ver1);
+my @sp2 = split(/[\.\-\+\~\_]/, $ver2);
 my $tmp;
 for(my $i=0; $i<@sp1 || $i<@sp2; $i++) {
 	my $v1 = $sp1[$i];
@@ -10951,7 +11003,6 @@ return 0;
 Converts the given Perl data structure to encoded binary string
 
 =item data parameter is a hash/array reference
-=item if the string should be UTF-8 encoded - most of the times, we already have UTF-8 on input, so don't use it
 =item if the output should be prettified
 
 =cut
@@ -10959,18 +11010,12 @@ sub convert_to_json
 {
 eval "use JSON::PP";
 if (!$@) {
-	my ($data, $utf8, $pretty) = @_;
+	my ($data, $pretty) = @_;
 	my $json = JSON::PP->new;
-	$utf8 = 0 if (!$utf8);
 	$pretty = 0 if (!$pretty);
 	$json = $json->pretty($pretty);
 	$data ||= {};
-	if	($utf8) {
-		return $json->encode($data);
-		} 
-	else {
-		return decode "UTF-8", $json->encode($data);
-		}
+	return $json->latin1->encode($data);
 	}
 else {
 	error("The JSON::PP Perl module is not available on your system : $@");
@@ -11007,6 +11052,22 @@ sub print_json
 {
 print "Content-type: application/json;\n\n";
 print convert_to_json(@_);
+}
+
+=head2 get_referer_relative()
+
+Returns relative URL based on referer omitting origin part. 
+Should be used instead for redirects with submitted forms
+
+=cut
+sub get_referer_relative
+{
+my $referer = $ENV{'HTTP_REFERER'};
+my $prefix = $gconfig{'webprefix'};
+$prefix = '/' if(!$prefix);
+$referer =~ s/http.*:\/\/.*?$prefix/\//;
+$referer =~ s/\/\//\//g;
+return $referer;
 }
 
 $done_web_lib_funcs = 1;

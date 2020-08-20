@@ -1,4 +1,4 @@
-bifc_nobridge=<Nincs>
+bifc_nobridge=&lt;Nincs&gt;
 bifc_ebridge=A híd interfésznek számnak kell lennie
 bifc_bridgestp=Átfogó fa protokoll
 bifc_bridgefd=Előre késleltetés
@@ -9,3 +9,4 @@ bonding_primary=Elsődleges interfész
 bonding_primarydesc=Csak aktív biztonsági mentés, balance-tlb vagy balance-alb csoportosítási módok esetén alkalmazható
 bonding_miimondesc=(Hagyja üresen a link figyelésének letiltását)
 hosts_active=Engedélyezve van?
+acl_sysinfo=Mutassa a rendelkezésre álló hálózati interfészeket az irányítópulton

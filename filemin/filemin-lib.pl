@@ -3,9 +3,12 @@
 BEGIN { push(@INC, ".."); };
 use WebminCore;
 &init_config();
+
+use lib './lib';
+use POSIX;
 use Encode qw(decode encode);
 use File::Basename;
-use POSIX;
+use File::MimeInfo;
 
 sub get_attr_status {
   return has_command('lsattr');
@@ -304,10 +307,8 @@ sub print_interface {
         $link =~ s/^\///g;
         $vlink = html_escape($link);
         $vlink = quote_escape($vlink);
-        $vlink = decode('UTF-8', $vlink, Encode::FB_DEFAULT);
         my $hlink = html_escape($vlink);
         $vpath = quote_escape($vpath);
-        $vpath = decode('UTF-8', $vpath, Encode::FB_DEFAULT);
 
         my $type = $list[$count - 1][14];
         $type =~ s/\//\-/g;
@@ -433,6 +434,14 @@ foreach my $allowed_path (@allowed_paths) {
 	}
 $error && &error(&text('notallowed', '`' . &html_escape($file) . '`',
 		   '`' . &html_escape(join(" , ", @allowed_paths)) . '`.'));
+}
+
+sub clean_mimetype
+{
+my ($f) = @_;
+my $t = mimetype($f);
+eval { utf8::encode($t) if (utf8::is_utf8($t)) };
+return $t;
 }
 
 1;

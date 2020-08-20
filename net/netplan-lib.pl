@@ -62,9 +62,11 @@ foreach my $f (glob("$netplan_dir/*.yaml")) {
 					push(@addrs, $v);
 					}
 				}
-			my $a = shift(@addrs);
-			($cfg->{'address'}, $cfg->{'netmask'}) =
-				&split_addr_netmask($a);
+			if (!$cfg->{'dhcp'}) {
+				my $a = shift(@addrs);
+				($cfg->{'address'}, $cfg->{'netmask'}) =
+					&split_addr_netmask($a);
+				}
 			}
 		foreach my $a6 (@addrs6) {
 			if ($a6 =~ /^(\S+)\/(\d+)$/) {
@@ -444,7 +446,7 @@ sub parse_routing
 my ($dev, $gw);
 if (!$in{'gateway_def'}) {
 	&check_ipaddress($in{'gateway'}) ||
-		&error(&text('routes_egateway', $in{'gateway'}));
+		&error(&text('routes_egateway', &html_escape($in{'gateway'})));
 	$gw = $in{'gateway'};
 	$dev = $in{'gatewaydev'};
 	}
@@ -454,7 +456,7 @@ if (!$in{'gateway_def'}) {
 my ($dev6, $gw6);
 if (!$in{'gateway6_def'}) {
 	&check_ip6address($in{'gateway6'}) ||
-		&error(&text('routes_egateway6', $in{'gateway6'}));
+		&error(&text('routes_egateway6', &html_escape($in{'gateway6'})));
 	$gw6 = $in{'gateway6'};
 	$dev6 = $in{'gatewaydev6'};
 	}

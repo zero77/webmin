@@ -19,10 +19,49 @@ sub list_processes
 {
 local($pcmd, $line, $i, %pidmap, @plist, $dummy, @w, $_);
 local $ver = &get_ps_version();
-if ($ver >= 2) {
+if ($ver && $ver < 2) {
+	# Old version of ps
+	$pcmd = join(' ' , @_);
+	open(PS, "ps aulxhwwww $pcmd 2>/dev/nul |");
+	for($i=0; $line=<PS>; $i++) {
+		chop($line);
+		if ($line =~ /ps aulxhwwww/) { $i--; next; }
+		if ($line !~ /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+([\-\d]+)\s+([\-\d]+)\s+(\d+)\s+(\d+)\s+(\S*)\s+(\S+)[\s<>N]+(\S+)\s+([0-9:]+)\s+(.*)$/) {
+			$i--;
+			next;
+			}
+		$pidmap{$3} = $i;
+		$plist[$i]->{"pid"} = $3;
+		$plist[$i]->{"ppid"} = $4;
+		$plist[$i]->{"user"} = getpwuid($2);
+		$plist[$i]->{"size"} = "$7 kB";
+		$plist[$i]->{"cpu"} = "Unknown";
+		$plist[$i]->{"time"} = $12;
+		$plist[$i]->{"nice"} = $6;
+		$plist[$i]->{"args"} = $13;
+		$plist[$i]->{"_pri"} = $5;
+		$plist[$i]->{"_tty"} = $11 eq "?" ? $text{'edit_none'} : "/dev/tty$11";
+		$plist[$i]->{"_status"} = $stat_map{substr($10, 0, 1)};
+		($plist[$i]->{"_wchan"} = $9) =~ s/\s+$//g;
+		if (!$plist[$i]->{"_wchan"}) { delete($plist[$i]->{"_wchan"}); }
+		if ($plist[$i]->{"args"} =~ /^\((.*)\)/)
+			{ $plist[$i]->{"args"} = $1; }
+		}
+	close(PS);
+	open(PS, "ps auxh $pcmd |");
+	while($line=<PS>) {
+		if ($line =~ /^\s*(\S+)\s+(\d+)\s+(\S+)\s+(\S+)\s+/ &&
+		    defined($pidmap{$2})) {
+			$plist[$pidmap{$2}]->{"cpu"} = $3;
+			$plist[$pidmap{$2}]->{"_mem"} = "$4 %";
+			}
+		}
+	close(PS);
+}
+else {
 	# New version of ps, as found in redhat 6
 	local $width;
-	if ($ver >= 3.2) {
+	if (!$ver || $ver >= 3.2) {
 		# Use width format character if allowed
 		$width = ":80";
 		}
@@ -76,45 +115,6 @@ if ($ver >= 2) {
 		$plist[$i]->{"_rgroup"} = $w[3];
 		$plist[$i]->{"_pgid"} = $w[6];
 		$plist[$i]->{"_tty"} = $w[13] =~ /\?/ ? $text{'edit_none'} : "/dev/$w[13]";
-		}
-	close(PS);
-	}
-else {
-	# Old version of ps
-	$pcmd = join(' ' , @_);
-	open(PS, "ps aulxhwwww $pcmd 2>/dev/nul |");
-	for($i=0; $line=<PS>; $i++) {
-		chop($line);
-		if ($line =~ /ps aulxhwwww/) { $i--; next; }
-		if ($line !~ /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+([\-\d]+)\s+([\-\d]+)\s+(\d+)\s+(\d+)\s+(\S*)\s+(\S+)[\s<>N]+(\S+)\s+([0-9:]+)\s+(.*)$/) {
-			$i--;
-			next;
-			}
-		$pidmap{$3} = $i;
-		$plist[$i]->{"pid"} = $3;
-		$plist[$i]->{"ppid"} = $4;
-		$plist[$i]->{"user"} = getpwuid($2);
-		$plist[$i]->{"size"} = "$7 kB";
-		$plist[$i]->{"cpu"} = "Unknown";
-		$plist[$i]->{"time"} = $12;
-		$plist[$i]->{"nice"} = $6;
-		$plist[$i]->{"args"} = $13;
-		$plist[$i]->{"_pri"} = $5;
-		$plist[$i]->{"_tty"} = $11 eq "?" ? $text{'edit_none'} : "/dev/tty$11";
-		$plist[$i]->{"_status"} = $stat_map{substr($10, 0, 1)};
-		($plist[$i]->{"_wchan"} = $9) =~ s/\s+$//g;
-		if (!$plist[$i]->{"_wchan"}) { delete($plist[$i]->{"_wchan"}); }
-		if ($plist[$i]->{"args"} =~ /^\((.*)\)/)
-			{ $plist[$i]->{"args"} = $1; }
-		}
-	close(PS);
-	open(PS, "ps auxh $pcmd |");
-	while($line=<PS>) {
-		if ($line =~ /^\s*(\S+)\s+(\d+)\s+(\S+)\s+(\S+)\s+/ &&
-		    defined($pidmap{$2})) {
-			$plist[$pidmap{$2}]->{"cpu"} = $3;
-			$plist[$pidmap{$2}]->{"_mem"} = "$4 %";
-			}
 		}
 	close(PS);
 	}
@@ -496,6 +496,7 @@ sub get_current_cpu_temps
 my @rv;
 if (&has_command("sensors")) {
         my $fh = "SENSORS";
+        my $a;
         &open_execute_command($fh, "sensors </dev/null 2>/dev/null", 1);
         while(<$fh>) {
                 if (/Core\s+(\d+):\s+([\+\-][0-9\.]+)/) {
@@ -505,6 +506,20 @@ if (&has_command("sensors")) {
                 elsif (/CPU:\s+([\+\-][0-9\.]+)/) {
                         push(@rv, { 'core' => 0,
                                     'temp' => $1 });
+                        }
+                else {
+                    # New line - new device (disallow, if no either fan or voltage data)
+                    $a = 0 if (/^\s*$/);
+                    # Device has either fan or voltage data (sign of CPU)
+                    $a = 1 if (/fan[\d+]:\s+[0-9]+\s+RPM/i ||
+                                /in[\d+]:\s+[\+\-0-9\.]+\s+V/i ||
+                                /cpu_thermal-virtual-[\d]+/i);
+                    # Get odd output like in #1253 #1280
+                    if ($a && /temp(\d+):\s+([\+\-][0-9\.]+)/) {
+                            # Adjust to start from `0` as all other outputs
+                            push(@rv, { 'core' => (int($1) - 1),
+                                        'temp' => $2 });
+                            }
                         }
                 }
         close($fh);

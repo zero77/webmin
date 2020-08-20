@@ -11,7 +11,8 @@ my $dom = $zone->{'name'};
 &can_edit_zone($zone) ||
 	&error($text{'master_ecannot'});
 $access{'dnssec'} || &error($text{'dnssec_ecannot'});
-my $desc = &ip6int_to_net(&arpa_to_ip($dom));
+
+my $desc = &zone_subhead($zone);
 
 &ui_print_header($desc, $text{'zonekey_title'}, "",
 		 undef, undef, undef, undef, &restart_links($zone));

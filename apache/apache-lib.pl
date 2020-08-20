@@ -1057,8 +1057,9 @@ foreach $f (@{$_[0]}) {
 	push(@fl, $f) if (&indexof($f, @fl) < 0);
 	}
 foreach $f (&unique(@fl)) {
-    $rv .= &ui_checkbox($_[1], $f, $f, (&indexof($f, @{$_[0]}) < 0 ? 0 : 1 ) ); 
+	$rv .= &ui_checkbox($_[1], $f, $f, (&indexof($f, @{$_[0]}) < 0 ? 0 : 1 ) ); 
 	}
+$rv ||= &ui_textbox($_[1], "", 20);
 return $rv;
 }
 
@@ -1167,7 +1168,7 @@ print "<p>\n";
 sub restart_button
 {
 local $rv;
-$args = "redir=".&urlize($gconfig{'webprefix'} . &this_url());
+$args = "redir=".&urlize(&this_url());
 local @rv;
 if (&is_apache_running()) {
 	if ($access{'apply'}) {

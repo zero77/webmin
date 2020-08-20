@@ -16,6 +16,7 @@ index_checkconfig=Chroot dizininin <a href='$1'>modül yapılandırması</a> say
 index_eexpired=Uyarı: Aşağıdaki bölgelerin süresi doldu DNSSEC imzaları : $1
 index_eexpired_conf=Otomatik imzalama, $1 sayfasında yeniden etkinleştirilmelidir.
 index_eexpired_mod=Bu etki alanları için DNSSEC'yi devre dışı bırakmak için $1 modülünü kullanın veya imzalamanın neden başarısız olduğunu kontrol edin.
+master_inview=$1 görünümünde $2 
 master_egone=$1 bölgesi hiçbir görünümde yok
 master_egone2=$1 bölgesi mevcut değil!
 master_egone3=Görünümünde $1 bölgesi $2 mevcut değil!
@@ -194,7 +195,7 @@ hint_delete=Kök Bölgeyi Sil
 hint_deletedesc=Bu kök bölgesini kaldırmak için bu düğmeyi tıklayın. Bu olmadan, ad sunucunuz ikincil olduğu alan adlarından başka İnternet'teki alan adlarını çözemez.
 hcreate_header=Kök bölgesi ayrıntıları
 slaves_ok=Şimdi ekle
-slaves_group=<$1> grubunda
+slaves_group=&lt;$1&gt; grubunda
 slaves_sameview=Aynı adla görüntüle
 slaves_header=Küme slave sunucusu seçenekleri
 add_eversion2=Sunucu $1, birden fazla görünüme bölge eklemek için gerekli olan Webmin $2 veya daha üstünü çalıştırmıyor

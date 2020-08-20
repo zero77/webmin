@@ -1621,8 +1621,8 @@ sub _decode_B {
 sub encode_mimewords
 {
 my ($rawstr, %params) = @_;
-my $charset  = $params{Charset} || 'ISO-8859-1';
-my $defenc = uc($charset) eq 'ISO-2022-JP' ? 'b' : 'q';
+my $charset  = 'UTF-8';
+my $defenc = 'q';
 my $encoding = lc($params{Encoding} || $defenc);
 my $NONPRINT = "\\x00-\\x1F\\x7F-\\xFF";
 
@@ -1678,8 +1678,8 @@ return $str;
 sub encode_mimewords_address
 {
 my ($rawstr, %params) = @_;
-my $charset  = $params{Charset} || 'ISO-8859-1';
-my $defenc = uc($charset) eq 'ISO-2022-JP' ? 'b' : 'q';
+my $charset  = 'UTF-8';
+my $defenc = 'q';
 my $encoding = lc($params{Encoding} || $defenc);
 if ($rawstr =~ /^[\x20-\x7E]*$/) {
 	# No encoding needed
@@ -1707,7 +1707,7 @@ sub encode_mimeword
 {
 my $word = shift;
 my $encoding = uc(shift || 'Q');
-my $charset  = uc(shift || 'ISO-8859-1');
+my $charset  = 'UTF-8';
 my $encfunc  = (($encoding eq 'Q') ? \&_encode_Q : \&_encode_B);
 return "=?$charset?$encoding?" . &$encfunc($word) . "?=";
 }
@@ -2835,12 +2835,12 @@ sub send_text_mail
 {
 local ($from, $to, $cc, $subject, $body, $smtp) = @_;
 local $cs = &get_charset();
-local $attach = $body =~ /[\177-\377]/ ?
+local $attach = $body =~ /^[\000-\177]*$/ ?
+	{ 'headers' => [ [ 'Content-type', 'text/plain' ] ],
+	  'data' => &entities_to_ascii($body) } :
 	{ 'headers' => [ [ 'Content-Type', 'text/plain; charset='.$cs ],
 		         [ 'Content-Transfer-Encoding', 'quoted-printable' ] ],
-          'data' => &quoted_encode($body) } :
-	{ 'headers' => [ [ 'Content-type', 'text/plain' ] ],
-	  'data' => &entities_to_ascii($body) };
+          'data' => &quoted_encode($body) };
 local $mail = { 'headers' =>
 		[ [ 'From', $from ],
 		  [ 'To', $to ],

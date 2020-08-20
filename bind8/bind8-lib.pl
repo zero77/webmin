@@ -66,8 +66,13 @@ our $dnssec_dlv_zone = "dlv.isc.org.";
 our @dnssec_dlv_key = ( 257, 3, 5, '"BEAAAAPHMu/5onzrEE7z1egmhg/WPO0+juoZrW3euWEn4MxDCE1+lLy2brhQv5rN32RKtMzX6Mj70jdzeND4XknW58dnJNPCxn8+jAGl2FZLK8t+1uq4W+nnA3qO2+DL+k6BD4mewMLbIYFwe0PG73Te9fZ2kJb56dhgMde5ymX4BI/oQ+cAK50/xvJv00Frf8kw6ucMTwFlgPe+jnGxPPEmHAte/URkY62ZfkLoBAADLHQ9IrS2tryAe7mbBZVcOwIeU/Rw/mRx/vwwMCTgNboMQKtUdvNXDrYJDSHZws3xiRXF1Rf+al9UmZfSav/4NWLKjHzpT59k/VStTDN0YUuWrBNh"' );
 
 my $rand_flag;
-if ($gconfig{'os_type'} =~ /-linux$/ && -r "/dev/urandom" &&
-    !$config{'force_random'}) {
+if ($gconfig{'os_type'} =~ /-linux$/ && 
+    -r "/dev/urandom" &&
+    !$config{'force_random'} &&
+    $bind_version &&
+    &compare_version_numbers($bind_version, '9.14') < 0) {
+	# Version: 9.14.2 deprecated the use of -r option 
+	# in favor of using /dev/random [bugs:#5370]
 	$rand_flag = "-r /dev/urandom";
 	}
 
@@ -2399,7 +2404,7 @@ foreach my $k (keys %znc) {
 		}
 	}
 if ($changed || $znc{'version'} != $zone_names_version ||
-    $config{'no_chroot'} != $znc{'no_chroot_config'} ||
+    int($config{'no_chroot'}) != int($znc{'no_chroot_config'}) ||
     $config{'pid_file'} ne $znc{'pidfile_config'}) {
 	# Yes .. need to rebuild
 	%znc = ( );
@@ -3156,6 +3161,10 @@ my ($zone) = @_;
 my @rv;
 if (!$access{'ro'} && $access{'apply'}) {
 	my $r = $ENV{'REQUEST_METHOD'} eq 'POST' ? 0 : 1;
+	my $zone_name;
+	if ($zone) {
+		$zone_name = "&" . "zone=$zone->{'name'}&type=$zone->{'type'}";
+	}
 	if (&is_bind_running()) {
 		if ($zone && ($access{'apply'} == 1 || $access{'apply'} == 2)) {
 			# Apply this zone
@@ -3166,16 +3175,16 @@ if (!$access{'ro'} && $access{'apply'}) {
 			}
 		# Apply whole config
 		if ($access{'apply'} == 1 || $access{'apply'} == 3) {
-			push(@rv, &ui_link("restart.cgi?return=$r", $text{'links_restart'}) );
+			push(@rv, &ui_link("restart.cgi?return=$r$zone_name", $text{'links_restart'}) );
 			}
 		if ($access{'apply'} == 1) {
 			# Stop BIND
-			push(@rv, &ui_link("stop.cgi?return=$r", $text{'links_stop'}) );
+			push(@rv, &ui_link("stop.cgi?return=$r$zone_name", $text{'links_stop'}) );
 			}
 		}
 	elsif ($access{'apply'} == 1) {
 		# Start BIND
-		push(@rv, &ui_link("start.cgi?return=$r", $text{'links_start'}));
+		push(@rv, &ui_link("start.cgi?return=$r$zone_name", $text{'links_start'}));
 		}
 	}
 return join('<br>', @rv);
@@ -4258,6 +4267,16 @@ if (&foreign_check("virtual-server")) {
 	push(@rv, &virtual_server::get_domain_by("dns_subof", $d->{'id'})) if ($d);
 	}
 return wantarray ? @rv : $rv[0];
+}
+
+# zone_subhead(&zone)
+# Returns a ui_header subtitle for a zone
+sub zone_subhead
+{
+my ($zone) = @_;
+my $desc = &ip6int_to_net(&arpa_to_ip($zone->{'name'}));
+my $view = $zone->{'view'};
+return $view ? &text('master_inview', $desc, $view) : $desc;
 }
 
 1;

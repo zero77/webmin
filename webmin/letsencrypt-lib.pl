@@ -18,7 +18,12 @@ $letsencrypt_chain_urls = [
 
 sub get_letsencrypt_python_cmd
 {
-return &has_command("python2.7") || &has_command("python27") ||
+return &has_command("python3") || &has_command("python30") ||
+       &has_command("python3.9") || &has_command("python39") ||
+       &has_command("python3.8") || &has_command("python38") ||
+       &has_command("python3.7") || &has_command("python37") ||
+       &has_command("python3.6") || &has_command("python36") ||
+       &has_command("python2.7") || &has_command("python27") ||
        &has_command("python2.6") || &has_command("python26") ||
        &has_command("python");
 }
@@ -94,7 +99,8 @@ if ($mode eq "web") {
 	my @st = stat($webroot);
 	my $user = getpwuid($st[4]);
 	if (!-d $challenge) {
-		my $cmd = "mkdir -p -m 755 ".quotemeta($challenge);
+		my $cmd = "mkdir -p -m 755 ".quotemeta($challenge).
+			  " && chmod 755 ".quotemeta($wellknown);
 		if ($user && $user ne "root") {
 			$cmd = &command_as_user($user, 0, $cmd);
 			}
@@ -249,6 +255,10 @@ if ($letsencrypt_cmd) {
 
 	return (1, $cert, $key, $chain);
 	}
+elsif ($mode eq "dns") {
+	# Python client doesn't support DNS
+	return (0, $text{'letsencrypt_eacmedns'});
+	}
 else {
 	# Fall back to local Python client
 	$size ||= 4096;
@@ -296,7 +306,7 @@ else {
 				: "--dns-hook $dns_hook ".
 				  "--cleanup-hook $cleanup_hook ").
 		($staging ? "--ca https://acme-staging.api.letsencrypt.org "
-			  : "").
+			  : "--disable-check ").
 		"--quiet ".
 		"2>&1 >".quotemeta($cert));
 	&reset_environment();
@@ -343,7 +353,7 @@ else {
 	# Copy the per-domain files
 	my $certfinal = "$module_config_directory/$doms[0].cert";
 	my $keyfinal = "$module_config_directory/$doms[0].key";
-	my $chainfinal = "$module_config_directory/$doms[0].chain";
+	my $chainfinal = "$module_config_directory/$doms[0].ca";
 	&copy_source_dest($cert, $certfinal, 1);
 	&copy_source_dest($key, $keyfinal, 1);
 	&copy_source_dest($chain, $chainfinal, 1);

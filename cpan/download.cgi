@@ -204,7 +204,7 @@ else {
 
 # Check if the file looks like a perl module
 foreach $pfile (@pfile) {
-	open(TAR, "( gunzip -c $pfile | tar tf - ) 2>&1 |");
+	open(TAR, "( gunzip -c ".quotemeta($pfile)." | tar tf - ) 2>&1 |");
 	while($line = <TAR>) {
 		if ($line =~ /^\.\/([^\/]+)\/(.*)$/ ||
 		    $line =~ /^([^\/]+)\/(.*)$/) {
@@ -219,7 +219,8 @@ foreach $pfile (@pfile) {
 	close(TAR);
 	if ($?) {
 		unlink(@pfile) if ($need_unlink);
-		&install_error(&text('download_etar', "<tt>$tar</tt>"));
+		&install_error(&text('download_etar',
+			"<tt>".&html_escape($tar)."</tt>"));
 		}
 	}
 if (@dirs == 0 || $file{'Makefile.PL'}+$file{'Build.PL'} < @dirs) {
